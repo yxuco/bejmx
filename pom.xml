@@ -4,7 +4,7 @@
 
   <groupId>com.tibco.metrics</groupId>
   <artifactId>bejmx</artifactId>
-  <version>2.2</version>
+  <version>2.3</version>
   <packaging>jar</packaging>
 
   <name>bejmx</name>
@@ -20,6 +20,11 @@
       <artifactId>junit</artifactId>
       <version>4.12</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.sun</groupId>
+      <artifactId>tools</artifactId>
+      <version>1.7.0</version>
     </dependency>
   </dependencies>
   <build>

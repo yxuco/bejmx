@@ -38,6 +38,7 @@ public class Client {
 	private String engineName;
 	private String host;
 	private int port;
+	private int pid = -1;
 	private String username;
 	private String password;
 	private HashMap<String, FileWriter> writerMap;
@@ -116,20 +117,53 @@ public class Client {
 		this.fileMap = new HashMap<String, String>();
 	}
 
+	public Client(int pid) {
+		this.pid = pid;
+		this.engineName = "PID-" + pid;
+		this.writerMap = new HashMap<String, FileWriter>();
+		this.fileMap = new HashMap<String, String>();
+	}
+
+	@SuppressWarnings("restriction")
 	private void openConnection() throws IOException {
 		// connect to MBean server
+		String urlStr = null;
 		HashMap<String, String[]> env = null;
-		if (username != null) {
-			env = new HashMap<String, String[]>();
-			env.put("jmx.remote.credentials", new String[] { username, password });
+		if (pid != -1) {
+			// local Java process
+			urlStr = sun.management.ConnectorAddressLink.importFrom(pid);
+			if (null == urlStr) {
+				System.out.println(String.format("No JMX address for pid %s, attach to VM and load agent jar", pid));
+				loadAgentJar();
+				urlStr = sun.management.ConnectorAddressLink.importFrom(pid);
+			}
+		} else {
+			// remote MBean server
+			if (username != null) {
+				env = new HashMap<String, String[]>();
+				env.put("jmx.remote.credentials", new String[] { username, password });
+			}
+			urlStr = String.format("service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi", host, port);
 		}
-
-		String urlStr = String.format("service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi", host, port);
 		System.out.println(
 				String.format("Connect to engine %s on JMX url %s with user %s ", engineName, urlStr, username));
 		JMXServiceURL url = new JMXServiceURL(urlStr);
 		jmxc = JMXConnectorFactory.connect(url, env);
 		mbsc = jmxc.getMBeanServerConnection();
+	}
+
+	private void loadAgentJar() throws IOException {
+		String javaHome = System.getProperty("java.home");
+		File agentJar = new File(javaHome + File.separator + "lib" + File.separator + "management-agent.jar");
+		if (agentJar.exists()) {
+			String agentJarPath = agentJar.getCanonicalPath();
+			try {
+				com.sun.tools.attach.VirtualMachine.attach(String.valueOf(pid)).loadAgent(agentJarPath);
+			} catch (Exception e) {
+				e.printStackTrace();
+				throw new IOException(e.getMessage());
+			}
+		}
 	}
 
 	/**
@@ -234,7 +268,11 @@ public class Client {
 
 	private String statFilename(String statType) {
 		Calendar cal = Calendar.getInstance();
-		return String.format("%s_%s_%s_%s_%5$tm_%5$td.csv", engineName, host, port, statType, cal);
+		if (pid != -1) {
+			return String.format("%s_%s_%3$tm_%3$td.csv", engineName, statType, cal);
+		} else {
+			return String.format("%s_%s_%s_%s_%5$tm_%5$td.csv", engineName, host, port, statType, cal);
+		}
 	}
 
 	/**
@@ -342,6 +380,7 @@ public class Client {
 					// reconnect to JMX
 					openConnection();
 				} catch (IOException e) {
+					e.printStackTrace();
 					System.out
 							.println(String.format("Failed to connect to engine %s @ %s:%s ", engineName, host, port));
 					closeConnection();
